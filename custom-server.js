@@ -128,12 +128,39 @@ http.createServer = (...args) => {
 if (require.main === module) {
   const standalone = path.join(__dirname, "server.js");
   if (fs.existsSync(standalone)) {
+    // Check for PORT env var first (PaaS platforms), then --port CLI flag, then default
+    const envPort = process.env.PORT;
+    const portArgIndex = process.argv.indexOf("--port");
+    const cliPort = portArgIndex >= 0 ? process.argv[portArgIndex + 1] : null;
+    const port = envPort || cliPort || "20127";
+
+    // Update argv to ensure --port is set for Next.js
+    if (!process.argv.includes("--port")) {
+      process.argv.push("--port", port);
+    } else if (envPort) {
+      // If PORT env var is set and --port exists, replace the CLI port value with env port
+      const idx = process.argv.indexOf("--port");
+      process.argv[idx + 1] = port;
+    }
     require(standalone);
   } else {
     // Repo checkout has no standalone build next to us. `next start` builds its HTTP
     // server in-process, so the wrapper above still sanitizes every request.
     const nextBin = require.resolve("next/dist/bin/next");
-    process.argv = [process.argv[0], nextBin, "start", ...process.argv.slice(2)];
+    // Ensure PORT env var is honored by next start via --port flag
+    const envPort = process.env.PORT;
+    const portArgIndex = process.argv.indexOf("--port");
+    const cliPort = portArgIndex >= 0 ? process.argv[portArgIndex + 1] : null;
+    const port = envPort || cliPort || "20127";
+
+    const args = [process.argv[0], nextBin, "start", ...process.argv.slice(2)];
+    if (!args.includes("--port")) {
+      args.push("--port", port);
+    } else if (envPort) {
+      const idx = args.indexOf("--port");
+      args[idx + 1] = port;
+    }
+    process.argv = args;
     require(nextBin);
   }
 }
